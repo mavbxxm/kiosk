@@ -1,0 +1,67 @@
+var express = require('express')
+var cors = require('cors')
+var app = express()
+var bodyParser = require('body-parser')
+var jsonParser = bodyParser.json()
+const bcrypt = require('bcrypt');
+const saltRounds = 5;
+var jwt = require('jsonwebtoken');
+const secret ='logintoken';
+
+app.use(cors())
+
+const mysql = require('mysql2');
+// create the connection to database
+const connection = mysql.createConnection({
+  host: 'localhost',
+  user: 'root',
+  database: 'kiosk_mockup'
+});
+app.post('/register', jsonParser, function (req, res, next) {
+  bcrypt.hash(req.body.Password, saltRounds, function(err, hash) {
+    connection.execute(
+      'INSERT INTO user (User_ID,User_Name,Password,Department,Userlevel) VALUES (?,?,?,?,?)',
+      [req.body.User_ID,req.body.User_Name,hash,req.body.Department,req.body.Userlevel],
+      function(err, results, fields) {
+        if(err){
+          res.json({status:'error',message: err})
+          return}
+        res.json({status:'OK'})
+      }
+    );
+  });
+})
+
+app.post('/login', jsonParser, function (req, res, next){
+  connection.execute(
+    'SELECT * FROM user WHERE User_Name=?',
+    [req.body.User_Name],
+    function(err, user, fields) {
+      if(err) {res.json({status:'error',message: err}); return }
+      if(user.length == 0) {res.json({status:'error',message:'no user found'}); return }
+      bcrypt.compare(req.body.Password, user[0].Password, function(err, isLogin) {
+        if(isLogin){
+          var token = jwt.sign({ User_Name:user[0].User_Name }, secret, { expiresIn: '1h' });
+          res.json({status:'ok',message:'login success',token})
+        }else{
+          res.json({status:'error',message:'login failed'})
+        }
+       });
+    }
+  );
+})
+
+app.post('/authen', jsonParser, function (req, res, next){
+  try{
+    const token = req.headers.authorization.split(' ')[1]
+    var decoded = jwt.verify(token, secret);
+    res.json({status:'ok',decoded})
+  } catch(err){
+    res.json({status:'error',message: err.message})
+  }
+})
+
+
+app.listen(3333, function () {
+  console.log('CORS-enabled web server listening on port 3333')
+})
